@@ -75,6 +75,10 @@ ten_million_vector_vec <- ten_million_vector_vec^2
 
 })
 
+# Size in MiB - it's exactly the same as the peakRAM for the for loop
+object.size(ten_million_vector_for)/(1024^2)
+
+# And they are indeed identical
 identical(ten_million_vector_for, ten_million_vector_vec)
 
 #Why was the second one about 10 times as fast?
@@ -289,6 +293,8 @@ peakRAM(write.table(a_file, "I_O.tsv", sep="\t", col.names = T))
 #data.table
 peakRAM(fwrite(a_file, "I_O.tsv", sep="\t", col.names = T))
 
+#Again, notice the zero memory usage of data.table
+
 #Reading
 
 peakRAM({
@@ -299,23 +305,49 @@ peakRAM({
   a_file <- fread("I_O.tsv", sep = "\t", header = T)
 })
 
+#Same deal for reading in the file
+
+
+
 # Your call what you want to use, but really consider it.
+# The only reason I wouldn't use more powerful packages is that each additional package is a new dependency for an end-user.
+
+
+# Some other example advantages:
+
+# Do some function, grouping by a variable
+
+# Using base R
+peakRAM(sum_of_val_1_agg <- aggregate(a_file$value1, by=list(a_file$letter), FUN=sum))
+
+# Using data.table
+peakRAM(sum_of_val_1_DT <- a_file[, sum(value1), by = letter])
+
+# The key takeaway isn't even the speed, it's the fact that the operation could be done in less than 1/5th the memory
 
 
 
 
 
+# This next example expects your version of R to be up-to-date. 
+# I do not know how old a version of data.table can run the next few commands successfully.
+# Mine is 3.6.0 - Planting of a Tree
 
-# This next example expects your version of R to be up-to-date. I do not know how old a version of data.table can run the next few commands successfully.
-
-# It's almost impossible to overstate how ridiculously powerful this capacity is
+# It's almost impossible to overstate how ridiculously powerful this capacity is for a memory-limited task
 only_a <- fread(cmd = "grep 'A' I_O.tsv", header=T, sep = "\t")
+head(only_a)
 
 # Really, though. This is magic. It even works on windows without ANY extra steps.
 sed_too <- fread(cmd = "sed 's/A/lol/g' I_O.tsv", header=T, sep = "\t")
 head(sed_too)
 
+# And you can even pipe. Again, this is working on windows with unix behavior.
+only_a_lol <- fread(cmd = "grep 'A' I_O.tsv | sed 's/A/lol/g'", header=T, sep = "\t")
+head(only_a_lol)
 
+
+#Cleanup more
+rm(only_a, sed_too, only_a_lol)
 
 
 #############################################################################
@@ -356,11 +388,13 @@ ggplot(data=a_file, aes(x = value1)) +
   geom_histogram(fill = "red", alpha = .5) +
   geom_histogram(aes(x = a_file$value2), inherit.aes = F, fill = "blue", alpha = .5)
 
-# Was this the best way to plot this? No. The answer is 'No.'
 
+
+
+# Was this the best way to plot this?
 reformatted <- melt(a_file, id.vars = c("ID", "letter"))
 
-# We doubled the rows. Why?
+# We doubled the rows and have the same number of cols. Why?
 nrow(reformatted)
 head(reformatted)
 
@@ -369,28 +403,34 @@ head(reformatted)
 ggplot(reformatted, aes(x = value, fill = variable)) +
   geom_histogram(alpha = .5, position =  "identity")
 
+# Now imagine we had 100 columns.
 
 
 
-# Other advantage of long format:
-# Categorization becomes MUCH more intuitive
 
 
-# This is using dplyr
-other_adv <- reformatted %>% group_by(letter, variable) %>% summarise(mu=mean(value), sd= sd(value))
+
+# General advantage of long format:
+# categorization becomes MUCH more intuitive
+
+
+# This is using dplyr's pipe "%>%", and produces a tibble instead of a data.frame or data.table. The formats are mostly interchangable.
+peakRAM({other_adv <- reformatted %>% group_by(letter, variable) %>% summarise(mu=mean(value), sd= sd(value))})
+head(other_adv)
+
 
 #This is using data.table
 setkeyv(reformatted, c("letter", "variable"))
-other_adv_DT <- reformatted[, list(mean(value), sd(value)), by = key(reformatted)]
+peakRAM({other_adv_DT <- reformatted[, list(mean(value), sd(value)), by = key(reformatted)]})
+head(other_adv_DT)
 
-# Control is power
+# For once, data.table is actually not more memory efficent (though it is still faster). Multiple tools in the kit are good to have.
+
+# And there's all sorts of things you can do with this kind of data. 
 ggplot(data = other_adv_DT, aes(x = letter, y = V1)) +
   geom_errorbar(aes(ymin = V1-V2, ymax = V1+V2)) +
   facet_wrap(~variable) +
   ylab("Mean")
-
-4#Point is, we can do operations by groups quickly and efficiently. You can write your own functions to do more complicated things.
-
 
 
 
